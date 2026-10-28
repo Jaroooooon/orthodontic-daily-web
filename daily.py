@@ -1,4 +1,5 @@
 """中文优先的正畸行业每日微信简报（零 AI API 依赖，仅 Python 标准库）。"""
+import argparse
 import datetime as dt
 import email.utils
 import html
@@ -163,7 +164,17 @@ def news():
             excerpt = clean_excerpt(desc, NEWS_EXCERPT_CHARS)
             if norm(title) in norm(excerpt) or len(excerpt) < 35:
                 excerpt = ''
-            result.append({'title': title, 'url': url, 'date': pubdate, 'excerpt': excerpt})
+            # Google News RSS 的链接可能不可访问；不将其伪称为媒体原始报道。
+            # 直接源链接保留；Google聚合链接改为标题搜索入口，且明显标注。
+            parsed = urllib.parse.urlparse(url)
+            is_google = parsed.hostname in ('news.google.com', 'www.news.google.com')
+            if is_google:
+                search_url = 'https://www.bing.com/search?' + urllib.parse.urlencode({'q': re.split(r'\s+[-–—]\s+', title)[0]})
+                url = search_url
+                link_label = '按标题搜索原报道（非原文直链）'
+            else:
+                link_label = '新闻来源链接'
+            result.append({'title': title, 'url': url, 'date': pubdate, 'excerpt': excerpt, 'link_label': link_label})
     result.sort(key=lambda x: (not is_cn(x['title']), -score(x), x['date']), reverse=False)
     return result[:NEWS_LIMIT]
 
@@ -238,7 +249,7 @@ def format_papers(items):
 def reference_list(news_items, paper_items):
     lines = ['## ⚪ 四、参考来源 · 文末集中查看',
              '**新闻来源**']
-    lines.extend(f"{i}. [{x['title']}]({x['url']})" for i, x in enumerate(news_items, 1))
+    lines.extend(f"{i}. [{x['title']}｜{x.get('link_label', '新闻来源链接')}]({x['url']})" for i, x in enumerate(news_items, 1))
     lines.append('**PubMed文献**')
     lines.extend(f"{i}. [{x['title']}]({x['url']})" for i, x in enumerate(paper_items, 1))
     return '\n\n'.join(lines)
@@ -263,16 +274,16 @@ def page_html(today, updates, papers):
     cards = []
     for i, item in enumerate(updates, 1):
         excerpt = item.get('excerpt') or '当前新闻源没有提供可核对的正文摘录，建议查看原始报道。'
-        cards.append(f'<article class="card"><h3>{i:02d}｜{esc(item["title"])}</h3><div class="meta">{esc(topic(item["title"]))} · {esc(item["date"])}</div><p>{esc(excerpt)}</p><a href="{esc(item["url"])}" target="_blank" rel="noopener noreferrer">原始新闻 ↗</a></article>')
+        cards.append(f'<article class="card"><h3>{i:02d}｜{esc(item["title"])}</h3><div class="meta">{esc(topic(item["title"]))} · {esc(item["date"])}</div><p>{esc(excerpt)}</p><a href="{esc(item["url"])}" target="_blank" rel="noopener noreferrer">{esc(item.get("link_label", "新闻来源链接"))} ↗</a></article>')
     pcards=[]
     for i,item in enumerate(papers,1):
         abstract=item.get('excerpt') or 'PubMed未提供可用摘要。'
         pcards.append(f'<article class="card"><h3>{i:02d}｜{esc(item["title"])}</h3><div class="meta">{esc(item["journal"])} · {esc(item["date"])}</div><p><b>研究方向：</b>{esc(topic(item["title"]))}</p><p><b>研究类型提示：</b>{esc(evidence_hint(item["title"], abstract))}</p><p class="abstract"><b>摘要节选：</b>{esc(abstract)}</p><p class="clinical"><b>临床阅读关注点：</b>{esc(clinical_note(item))} 此项并非研究结论。</p><a href="{esc(item["url"])}" target="_blank" rel="noopener noreferrer">PubMed原文 ↗</a></article>')
-    highlights=''.join(f'<li><b>{i:02d}｜</b>{esc(item["title"])}</li>' for i,item in enumerate(updates[:HIGHLIGHT_LIMIT],1))
+    highlights=''.join(f'<li><b>{i:02d}｜</b>{esc(item["title"])}<div class="meta">{esc(topic(item["title"]))} · {esc(item["date"])}</div></li>' for i,item in enumerate(updates[:HIGHLIGHT_LIMIT],1))
     desc=f'正畸行业资讯{len(updates)}条，近7天PubMed文献{len(papers)}篇。中文新闻优先，原始文献置后。'
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(title)}</title><meta name="description" content="{esc(desc)}"><meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:type" content="article"><style>
-*{{box-sizing:border-box}}body{{margin:0;background:#eef2f6;color:#283746;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.75}}.page{{max-width:720px;margin:auto;background:white;padding:28px 22px 60px}}h1{{font-size:27px;color:#173d58;line-height:1.35;margin:8px 0}}.sub,.meta{{color:#72828e;font-size:12px}}.eyebrow{{font-size:12px;color:#197c90;font-weight:700;letter-spacing:2px}}.intro{{margin-top:18px;background:#eaf4fa;border-left:4px solid #2e8aa6;padding:13px;border-radius:5px;font-size:14px}}h2{{font-size:19px;color:#195d78;border-bottom:2px solid #e2ebf0;padding-bottom:8px;margin-top:34px}}.news h2{{color:#a85b1d;border-color:#f4e3d5}}.papers h2{{color:#7151a2;border-color:#e9e0f4}}.card{{padding:16px 0;border-bottom:1px solid #edf1f4}}.card h3{{font-size:17px;color:#ad581f;line-height:1.55;margin:0 0 7px}}.papers h3{{color:#67499a}}.card p{{font-size:14px;margin:8px 0}}.abstract,.clinical{{background:#f5f7fa;padding:9px 12px;border-radius:5px}}.abstract{{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden}}a{{color:#1477a0;word-break:break-word}}ol{{padding-left:22px}}li{{margin:8px 0}}.note{{margin-top:25px;color:#77633d;background:#fff9e9;font-size:12px;padding:12px;border-radius:6px}}.footer{{margin-top:28px;font-size:13px}}
-</style></head><body><main class="page"><div class="eyebrow">ORTHODONTICS DAILY</div><h1>🦷 正畸行业每日简报</h1><div class="sub">{esc(today)} · 中文重点 · 适合微信转发</div><div class="intro"><b>今日导读</b><br>{esc(desc)}<br>直接阅读正文；点击各条目可核对原始来源。</div><h2>🔴 一、重点速览</h2><ol>{highlights or '<li>暂无符合筛选条件的行业新闻。</li>'}</ol><section class="news"><h2>📰 二、国内外行业动态</h2>{''.join(cards) or '<p>本期暂无符合筛选要求的新闻。</p>'}</section><section class="papers"><h2>📚 三、最新学术文献（文末）</h2><p class="sub">摘要限制约260字符，并按手机显示限制在6行左右。</p>{''.join(pcards) or '<p>本期暂无符合筛选条件的论文。</p>'}</section><p class="note">自动检索版：未使用付费AI，不对英文论文自动生成中文研究结论。新闻摘录与PubMed摘要均来自第三方数据源，请以原文为准。研究类型和临床关注点为规则提示，并非证据质量评价。</p><div class="footer"><a href="./archive.html">历史简报索引 ↗</a></div></main></body></html>'''
+*{{box-sizing:border-box}}body{{margin:0;background:#eef2f6;color:#283746;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.75}}.page{{max-width:720px;margin:auto;background:white;padding:28px 22px 60px}}h1{{font-size:27px;color:#173d58;line-height:1.35;margin:8px 0}}.sub,.meta{{color:#72828e;font-size:12px}}.eyebrow{{font-size:12px;color:#197c90;font-weight:700;letter-spacing:2px}}.intro{{margin-top:18px;background:#eaf4fa;border-left:4px solid #2e8aa6;padding:13px;border-radius:5px;font-size:14px}}h2{{font-size:19px;color:#195d78;border-bottom:2px solid #e2ebf0;padding-bottom:8px;margin-top:34px}}.news h2{{color:#a85b1d;border-color:#f4e3d5}}.papers h2{{color:#7151a2;border-color:#e9e0f4}}.card{{padding:16px 0;border-bottom:1px solid #edf1f4}}.card h3{{font-size:17px;color:#ad581f;line-height:1.55;margin:0 0 7px}}.papers h3{{color:#67499a}}.card p{{font-size:14px;margin:8px 0}}.abstract,.clinical{{background:#f5f7fa;padding:9px 12px;border-radius:5px}}.abstract{{white-space:normal}}a{{color:#1477a0;word-break:break-word}}ol{{padding-left:22px}}li{{margin:8px 0}}.note{{margin-top:25px;color:#77633d;background:#fff9e9;font-size:12px;padding:12px;border-radius:6px}}.footer{{margin-top:28px;font-size:13px}}
+</style></head><body><main class="page"><div class="eyebrow">ORTHODONTICS DAILY</div><h1>🦷 正畸行业每日简报</h1><div class="sub">{esc(today)} · 中文重点 · 适合微信转发</div><div class="intro"><b>今日导读</b><br>{esc(desc)}<br>直接阅读正文；点击各条目可核对原始来源。</div><h2>🔴 一、重点速览</h2><ol>{highlights or '<li>暂无符合筛选条件的行业新闻。</li>'}</ol><section class="news"><h2>📰 二、国内外行业动态</h2>{''.join(cards) or '<p>本期暂无符合筛选要求的新闻。</p>'}</section><section class="papers"><h2>📚 三、最新学术文献（文末）</h2><p class="sub">摘要节选最多约260字符，与微信详情使用同一文本。</p>{''.join(pcards) or '<p>本期暂无符合筛选条件的论文。</p>'}</section><p class="note">自动检索版：未使用付费AI，不对英文论文自动生成中文研究结论。新闻摘录与PubMed摘要均来自第三方数据源，请以原文为准。研究类型和临床关注点为规则提示，并非证据质量评价。</p><div class="footer"><a href="./archive.html">历史简报索引 ↗</a></div></main></body></html>'''
 
 def save_pages(today, updates, papers):
     from pathlib import Path
@@ -317,15 +328,35 @@ def main():
         reference_list(updates, papers),
         '> 说明：新闻文字来自信息源摘录；论文为英文摘要节选。研究类型与临床阅读关注点仅供检索参考，不代表临床证据评价。',
     ])
+    from pathlib import Path
+    Path('digest-message.json').write_text(json.dumps({'date':today,'title':title,'body':body,'page_url':page_url},ensure_ascii=False),encoding='utf-8')
     print('新闻:',len(updates),'论文:',len(papers),'网页:',page_url)
-    if os.getenv('SERVERCHAN_SENDKEY'):
-        push(title, body)
-    else:
-        print('未配置SERVERCHAN_SENDKEY，跳过微信推送；仅生成网页。')
+    print("已生成网页和同源微信消息，尚未推送。")
+
+def notify_after_deploy():
+    """仅在GitHub Pages发布成功后，发送生成阶段冻结的同一份摘要。"""
+    from pathlib import Path
+    saved = json.loads(Path('digest-message.json').read_text(encoding='utf-8'))
+    url = saved['page_url']
+    day = saved['date']
+    if not url.startswith('https://'):
+        raise RuntimeError('缺少有效的公开简报URL，拒绝发送旧版链接。')
+    # GitHub Pages的CDN可能有短暂缓存；使用查询参数绕过缓存。
+    check_url = url + ('&' if '?' in url else '?') + 'date=' + urllib.parse.quote(day)
+    text = fetch(check_url).decode('utf-8', errors='replace')
+    if f'正畸行业每日简报｜{day}' not in html.unescape(text):
+        raise RuntimeError('线上网页尚未显示本期日期，拒绝推送。')
+    push(saved['title'], saved['body'])
 
 if __name__ == '__main__':
     try:
-        main()
+        parser=argparse.ArgumentParser()
+        parser.add_argument('--notify-only',action='store_true')
+        args=parser.parse_args()
+        if args.notify_only:
+            notify_after_deploy()
+        else:
+            main()
     except Exception as exc:
         print('运行失败：'+str(exc), file=sys.stderr)
         sys.exit(1)
