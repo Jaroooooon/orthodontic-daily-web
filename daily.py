@@ -306,7 +306,17 @@ def main():
     else:
         page_url='（本地预览不提供链接）'
     title=f'🦷 正畸行业每日简报｜{today}'
-    body=f'**今日简报已生成**\n\n📰 行业资讯：{len(updates)}条\n\n📚 相关学术文献：{len(papers)}篇\n\n**[点击阅读完整中文重点简报]({page_url})**\n\n网页可转发给微信好友，支持历史归档。'
+    body = '\n\n'.join([
+        f'## 📖 [点击阅读完整正畸行业简报（网页版）]({page_url})',
+        f'> 网页版适合手机阅读、转发好友及查看历史简报。',
+        f'**📰 行业资讯：{len(updates)}条｜📚 学术文献：{len(papers)}篇**',
+        '---',
+        overview(updates),
+        format_news(updates),
+        format_papers(papers),
+        reference_list(updates, papers),
+        '> 说明：新闻文字来自信息源摘录；论文为英文摘要节选。研究类型与临床阅读关注点仅供检索参考，不代表临床证据评价。',
+    ])
     print('新闻:',len(updates),'论文:',len(papers),'网页:',page_url)
     if os.getenv('SERVERCHAN_SENDKEY'):
         push(title, body)
