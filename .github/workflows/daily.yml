@@ -3,7 +3,9 @@ name: 正畸行业简报网页自动更新
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7 8 * * *'
+    - cron: '7 8,9 * * *'
+      timezone: 'Asia/Shanghai'
+    - cron: '37 8 * * *'
       timezone: 'Asia/Shanghai'
 
 permissions:
@@ -28,15 +30,30 @@ jobs:
         with:
           persist-credentials: true
 
+      - name: 检查今日是否已有微信推送登记
+        id: dedupe
+        shell: bash
+        run: |
+          DAY=$(TZ=Asia/Shanghai date +%F)
+          if [ -f "delivery/${DAY}.json" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "${DAY} 已有推送登记，跳过本次运行。"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Python 3.12
+        if: steps.dedupe.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: 一次检索、生成网页与同源微信正文
+        if: steps.dedupe.outputs.skip != 'true'
         run: python daily.py
 
       - name: 保存网页、历史归档及本次微信正文
+        if: steps.dedupe.outputs.skip != 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -47,21 +64,25 @@ jobs:
           fi
 
       - name: 仅打包对外网页内容
+        if: steps.dedupe.outputs.skip != 'true'
         run: |
           mkdir -p _site
           cp index.html archive.html .nojekyll _site/
           cp -R archive _site/
 
       - name: 上传本期网页文件
+        if: steps.dedupe.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: _site
 
       - name: 确认 GitHub Pages 部署成功
+        if: steps.dedupe.outputs.skip != 'true'
         id: deploy
         uses: actions/deploy-pages@v4
 
       - name: 部署完成后仅推送一条微信通知
+        if: steps.dedupe.outputs.skip != 'true'
         env:
           SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
         run: python daily.py --notify-only
