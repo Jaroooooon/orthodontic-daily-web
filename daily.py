@@ -346,7 +346,41 @@ def notify_after_deploy():
     text = fetch(check_url).decode('utf-8', errors='replace')
     if f'正畸行业每日简报｜{day}' not in html.unescape(text):
         raise RuntimeError('线上网页尚未显示本期日期，拒绝推送。')
-    push(saved['title'], saved['body'])
+    # 在GitHub仓库中预先登记本日推送，避免补偿执行和手动重跑造成重复。
+    # 采用保守策略：网络超时等无法判断是否已发送时保留登记，避免再次发送。
+    marker = Path('delivery') / (day + '.json')
+    if marker.exists():
+        print('今日已存在发送登记，跳过微信推送：', marker)
+        return
+    marker.parent.mkdir(exist_ok=True)
+    marker.write_text(json.dumps({
+        'date': day, 'status': 'reserved',
+        'created_at': dt.datetime.now(TZ).isoformat(),
+        'note': '预先登记用于防重；若推送超时，请人工核对微信及Server酱日志。'
+    }, ensure_ascii=False, indent=2), encoding='utf-8')
+    import subprocess
+    def git(*args):
+        subprocess.run(['git', *args], check=True)
+    git('config', 'user.name', 'github-actions[bot]')
+    git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
+    git('add', str(marker))
+    git('commit', '-m', 'Reserve orthodontic digest delivery ' + day)
+    git('push')  # 未成功登记，就绝不发送
+    try:
+        push(saved['title'], saved['body'])
+    except Exception:
+        # 不能判定请求是否送达；为保证每日最多一条，不自动移除登记。
+        print('微信推送状态不确定；已保留防重登记，需人工核对后处理。', file=sys.stderr)
+        raise
+    marker.write_text(json.dumps({
+        'date': day, 'status': 'accepted_by_serverchan',
+        'created_at': dt.datetime.now(TZ).isoformat(),
+        'note': 'Server酱接口已接受请求；不代表微信终端必然送达。'
+    }, ensure_ascii=False, indent=2), encoding='utf-8')
+    git('add', str(marker))
+    git('commit', '-m', 'Confirm orthodontic digest delivery ' + day)
+    git('push')
+
 
 if __name__ == '__main__':
     try:
