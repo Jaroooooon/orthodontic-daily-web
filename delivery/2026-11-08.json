@@ -1,6 +1,6 @@
 {
   "date": "2026-11-08",
-  "status": "reserved",
-  "created_at": "2026-11-08T13:52:16.724207+08:00",
-  "note": "预先登记用于防重；若推送超时，请人工核对微信及Server酱日志。"
+  "status": "accepted_by_serverchan",
+  "created_at": "2026-11-08T13:52:20.881712+08:00",
+  "note": "Server酱接口已接受请求；不代表微信终端必然送达。"
 }
